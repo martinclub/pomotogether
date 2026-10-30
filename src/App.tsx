@@ -73,7 +73,7 @@ export function App() {
     const unsubState = socketService.onRoomState((updatedRoom) => {
       setRoom(updatedRoom);
       // If synced room and not host, update local timer
-      if (updatedRoom.syncMode === 'synced') {
+      if (updatedRoom.syncMode === 'synced' && updatedRoom.hostId !== user.id) {
         const t = updatedRoom.timer;
         setMode(t.mode);
         setTimeLeft(t.timeLeft);
@@ -207,9 +207,14 @@ export function App() {
             mode: nextM,
             timeLeft: nextDur,
             duration: nextDur,
+            cycle,
           });
           if (settings.autoStartBreaks) {
-            socketService.sendTimerAction(room.code, 'start');
+            socketService.sendTimerAction(room.code, 'start', {
+              timeLeft: nextDur,
+              duration: nextDur,
+              cycle,
+            });
           }
         }
       } else {
@@ -228,9 +233,14 @@ export function App() {
             mode: 'pomodoro',
             timeLeft: nextDur,
             duration: nextDur,
+            cycle: nextCycle,
           });
           if (settings.autoStartPomodoros) {
-            socketService.sendTimerAction(room.code, 'start');
+            socketService.sendTimerAction(room.code, 'start', {
+              timeLeft: nextDur,
+              duration: nextDur,
+              cycle: nextCycle,
+            });
           }
         }
       }
@@ -242,10 +252,14 @@ export function App() {
   useEffect(() => {
     if (!isRunning) return;
 
-    // If synced follower, the host/server runs the master timer, but we still tick locally for fluid UI
+    // Local countdown interval for fluid display
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
+          if (isSyncedFollower) {
+            // Synced follower clamps to 0 and waits for host's official completion event
+            return 0;
+          }
           clearInterval(timer);
           handleTimerCompletion();
           return 0;
@@ -256,7 +270,7 @@ export function App() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isRunning, handleTimerCompletion, settings.tickingSound]);
+  }, [isRunning, isSyncedFollower, handleTimerCompletion, settings.tickingSound]);
 
   // Mode change handler
   const handleSetMode = (newMode: TimerMode) => {
@@ -275,12 +289,13 @@ export function App() {
         mode: newMode,
         timeLeft: newDuration,
         duration: newDuration,
+        cycle,
       });
     }
   };
 
   // Toggle Start / Pause
-  const handleToggleTimer = () => {
+  const handleToggleTimer = useCallback(() => {
     playClickSound(settings.clickSound);
     const nextRunning = !isRunning;
     setIsRunning(nextRunning);
@@ -288,9 +303,35 @@ export function App() {
     if (room && room.syncMode === 'synced' && isHost) {
       socketService.sendTimerAction(room.code, nextRunning ? 'start' : 'pause', {
         timeLeft,
+        duration,
+        cycle,
       });
     }
-  };
+  }, [isRunning, room, isHost, settings.clickSound, timeLeft, duration, cycle]);
+
+  // Global Spacebar shortcut to Start/Pause (matches Pomofocus.io)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (isSyncedFollower) return;
+        handleToggleTimer();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSyncedFollower, handleToggleTimer]);
 
   // Reset Timer
   const handleResetTimer = () => {
@@ -308,6 +349,7 @@ export function App() {
         mode,
         timeLeft: dur,
         duration: dur,
+        cycle,
       });
     }
   };
@@ -329,11 +371,13 @@ export function App() {
           mode: nextM,
           timeLeft: nextDur,
           duration: nextDur,
+          cycle,
         });
       }
     } else {
       const nextDur = settings.pomodoroTime * 60;
-      setCycle((c) => c + 1);
+      const nextCycle = cycle + 1;
+      setCycle(nextCycle);
       setMode('pomodoro');
       setTimeLeft(nextDur);
       setDuration(nextDur);
@@ -343,6 +387,7 @@ export function App() {
           mode: 'pomodoro',
           timeLeft: nextDur,
           duration: nextDur,
+          cycle: nextCycle,
         });
       }
     }
@@ -350,18 +395,28 @@ export function App() {
 
   // Room Handlers
   const handleJoinRoom = (code: string) => {
-    socketService.joinRoom(code, user);
+    const cleanCode = code.toUpperCase().trim();
+    socketService.joinRoom(cleanCode, user);
+    window.history.replaceState(null, '', `?room=${cleanCode}`);
   };
 
   const handleCreateRoom = (name: string, syncMode: RoomSyncMode) => {
     const randomCode = `ROOM-${Math.floor(10 + Math.random() * 90)}`;
-    socketService.joinRoom(randomCode, user, name, syncMode);
+    const timerSettings = {
+      pomodoroTime: settings.pomodoroTime,
+      shortBreakTime: settings.shortBreakTime,
+      longBreakTime: settings.longBreakTime,
+      longBreakInterval: settings.longBreakInterval,
+    };
+    socketService.joinRoom(randomCode, user, name, syncMode, timerSettings);
+    window.history.replaceState(null, '', `?room=${randomCode}`);
   };
 
   const handleLeaveRoom = () => {
     if (room) {
       socketService.leaveRoom(room.code);
       setRoom(null);
+      window.history.replaceState(null, '', window.location.pathname);
     }
   };
 
@@ -389,9 +444,17 @@ export function App() {
   };
 
   const handleToggleComplete = (id: string) => {
-    setTasks((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t))
-    );
+    setTasks((prev) => {
+      const updated = prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t));
+      const target = updated.find((t) => t.id === id);
+      if (target?.completed && activeTaskId === id) {
+        const nextPending = updated.find((t) => !t.completed && t.id !== id);
+        if (nextPending) {
+          setActiveTaskId(nextPending.id);
+        }
+      }
+      return updated;
+    });
   };
 
   const handleAddTask = (taskData: Omit<Task, 'id' | 'createdAt'>) => {

@@ -1,14 +1,14 @@
 import { io, Socket } from 'socket.io-client';
-import { RoomState, ChatMessage, RoomReaction, RoomSyncMode, TimerMode, Participant } from '../types';
+import { RoomState, ChatMessage, RoomReaction, RoomSyncMode, TimerMode, Participant, RoomTimerSettings } from '../types';
 
 let socket: Socket | null = null;
 
 // Determine socket URL based on environment
 function getSocketUrl(): string {
   if (typeof window === 'undefined') return 'http://localhost:3001';
-  // If Vite dev server on 5173, socket connects to localhost:3001
-  if (window.location.port === '5173') {
-    return 'http://localhost:3001';
+  // If running in development (localhost or 127.0.0.1 on Vite dev port), connect to port 3001
+  if ((window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && window.location.port !== '3001') {
+    return `http://${window.location.hostname}:3001`;
   }
   return window.location.origin;
 }
@@ -38,9 +38,15 @@ export const socketService = {
     return getSocket();
   },
 
-  joinRoom(roomCode: string, user: { id: string; name: string; avatar: string }, roomName?: string, syncMode?: RoomSyncMode) {
+  joinRoom(
+    roomCode: string,
+    user: { id: string; name: string; avatar: string },
+    roomName?: string,
+    syncMode?: RoomSyncMode,
+    timerSettings?: RoomTimerSettings
+  ) {
     const s = getSocket();
-    s.emit('join_room', { roomCode, user, roomName, syncMode });
+    s.emit('join_room', { roomCode, user, roomName, syncMode, timerSettings });
   },
 
   leaveRoom(roomCode: string) {
@@ -51,7 +57,7 @@ export const socketService = {
   sendTimerAction(
     roomCode: string,
     action: 'start' | 'pause' | 'skip' | 'reset' | 'set_mode',
-    options?: { mode?: TimerMode; timeLeft?: number; duration?: number }
+    options?: { mode?: TimerMode; timeLeft?: number; duration?: number; cycle?: number }
   ) {
     const s = getSocket();
     s.emit('timer_action', {
@@ -60,6 +66,7 @@ export const socketService = {
       mode: options?.mode,
       timeLeft: options?.timeLeft,
       duration: options?.duration,
+      cycle: options?.cycle,
     });
   },
 

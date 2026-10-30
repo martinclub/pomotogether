@@ -4,7 +4,7 @@ import { Server, Socket } from 'socket.io';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { RoomState, Participant, TimerMode, RoomSyncMode, ChatMessage, RoomReaction } from '../src/types';
+import { RoomState, Participant, TimerMode, RoomSyncMode, ChatMessage, RoomReaction, RoomTimerSettings } from '../src/types';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,16 +31,29 @@ const PORT = process.env.PORT || 3001;
 export const rooms = new Map<string, RoomState>();
 
 // Helper to create initial room state
-export function createInitialRoom(code: string, name: string, host: Participant, syncMode: RoomSyncMode = 'synced'): RoomState {
+export function createInitialRoom(
+  code: string,
+  name: string,
+  host: Participant,
+  syncMode: RoomSyncMode = 'synced',
+  timerSettings?: RoomTimerSettings
+): RoomState {
+  const pTime = timerSettings?.pomodoroTime || 25;
   return {
     code: code.toUpperCase().trim(),
     name: name.trim() || `Room ${code.toUpperCase()}`,
     hostId: host.id,
     syncMode,
+    timerSettings: timerSettings || {
+      pomodoroTime: 25,
+      shortBreakTime: 5,
+      longBreakTime: 15,
+      longBreakInterval: 4,
+    },
     timer: {
       mode: 'pomodoro',
-      timeLeft: 25 * 60,
-      duration: 25 * 60,
+      timeLeft: pTime * 60,
+      duration: pTime * 60,
       isRunning: false,
       cycle: 1,
       updatedAt: Date.now(),
@@ -72,22 +85,28 @@ setInterval(() => {
         // Broadcast tick every 5 seconds or when timer reaches 0 to reduce spam
         if (room.timer.timeLeft === 0) {
           room.timer.isRunning = false;
-          // Switch mode automatically: pomodoro -> shortBreak (or longBreak after 4)
+          const sets = room.timerSettings || {
+            pomodoroTime: 25,
+            shortBreakTime: 5,
+            longBreakTime: 15,
+            longBreakInterval: 4,
+          };
+
           let nextMode: TimerMode = 'shortBreak';
-          let nextDuration = 5 * 60;
+          let nextDuration = sets.shortBreakTime * 60;
           let nextCycle = room.timer.cycle;
 
           if (room.timer.mode === 'pomodoro') {
-            if (room.timer.cycle % 4 === 0) {
+            if (room.timer.cycle % sets.longBreakInterval === 0) {
               nextMode = 'longBreak';
-              nextDuration = 15 * 60;
+              nextDuration = sets.longBreakTime * 60;
             } else {
               nextMode = 'shortBreak';
-              nextDuration = 5 * 60;
+              nextDuration = sets.shortBreakTime * 60;
             }
           } else {
             nextMode = 'pomodoro';
-            nextDuration = 25 * 60;
+            nextDuration = sets.pomodoroTime * 60;
             nextCycle += 1;
           }
 
@@ -162,7 +181,19 @@ io.on('connection', (socket: Socket) => {
   let currentRoomCode: string | null = null;
   let currentUserId: string | null = null;
 
-  socket.on('join_room', ({ roomCode, user, roomName, syncMode }: { roomCode: string; user: { id: string; name: string; avatar: string }; roomName?: string; syncMode?: RoomSyncMode }) => {
+  socket.on('join_room', ({
+    roomCode,
+    user,
+    roomName,
+    syncMode,
+    timerSettings,
+  }: {
+    roomCode: string;
+    user: { id: string; name: string; avatar: string };
+    roomName?: string;
+    syncMode?: RoomSyncMode;
+    timerSettings?: RoomTimerSettings;
+  }) => {
     const code = roomCode.toUpperCase().trim();
     currentRoomCode = code;
     currentUserId = user.id;
@@ -179,10 +210,15 @@ io.on('connection', (socket: Socket) => {
         isHost: true,
         joinedAt: Date.now(),
       };
-      room = createInitialRoom(code, roomName || `Room ${code}`, host, syncMode || 'synced');
+      room = createInitialRoom(code, roomName || `Room ${code}`, host, syncMode || 'synced', timerSettings);
       rooms.set(code, room);
     } else {
-      // Existing room: check if participant already in list
+      // Existing room: update timerSettings if provided by host
+      if (timerSettings && room.hostId === user.id) {
+        room.timerSettings = timerSettings;
+      }
+
+      // Check if participant already in list
       const existingIdx = room.participants.findIndex((p) => p.id === user.id);
       if (existingIdx >= 0) {
         room.participants[existingIdx].name = user.name;
@@ -220,17 +256,36 @@ io.on('connection', (socket: Socket) => {
     socket.to(code).emit('room_state', room);
   });
 
-  socket.on('timer_action', ({ roomCode, action, mode, timeLeft, duration }: { roomCode: string; action: 'start' | 'pause' | 'skip' | 'reset' | 'set_mode'; mode?: TimerMode; timeLeft?: number; duration?: number }) => {
+  socket.on('timer_action', ({
+    roomCode,
+    action,
+    mode,
+    timeLeft,
+    duration,
+    cycle,
+  }: {
+    roomCode: string;
+    action: 'start' | 'pause' | 'skip' | 'reset' | 'set_mode';
+    mode?: TimerMode;
+    timeLeft?: number;
+    duration?: number;
+    cycle?: number;
+  }) => {
     const code = roomCode.toUpperCase();
     const room = rooms.get(code);
     if (!room) return;
 
     if (action === 'start') {
       room.timer.isRunning = true;
+      if (typeof timeLeft === 'number') room.timer.timeLeft = timeLeft;
+      if (typeof duration === 'number') room.timer.duration = duration;
+      if (typeof cycle === 'number') room.timer.cycle = cycle;
       room.timer.updatedAt = Date.now();
     } else if (action === 'pause') {
       room.timer.isRunning = false;
       if (typeof timeLeft === 'number') room.timer.timeLeft = timeLeft;
+      if (typeof duration === 'number') room.timer.duration = duration;
+      if (typeof cycle === 'number') room.timer.cycle = cycle;
       room.timer.updatedAt = Date.now();
     } else if (action === 'skip' || action === 'reset' || action === 'set_mode') {
       room.timer.isRunning = false;
@@ -241,6 +296,7 @@ io.on('connection', (socket: Socket) => {
       } else if (typeof duration === 'number') {
         room.timer.timeLeft = duration;
       }
+      if (typeof cycle === 'number') room.timer.cycle = cycle;
       room.timer.updatedAt = Date.now();
     }
 
@@ -360,7 +416,8 @@ function handleLeaveRoom(socket: Socket, roomCode: string, userId: string | null
 }
 
 // Start server if run directly
-if (process.env.NODE_ENV !== 'test') {
+const isTestRun = process.env.NODE_ENV === 'test' || process.argv.some((arg) => arg.includes('test'));
+if (!isTestRun) {
   server.listen(PORT, () => {
     console.log(`[Pomotogether] Real-time Server running on port ${PORT}`);
   });

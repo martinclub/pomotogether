@@ -17,6 +17,20 @@ function getAudioContext(): AudioContext | null {
   return audioCtx;
 }
 
+// Auto-unlock audio on first user gesture
+if (typeof window !== 'undefined') {
+  const unlockAudio = () => {
+    const ctx = getAudioContext();
+    if (ctx && ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+    window.removeEventListener('pointerdown', unlockAudio);
+    window.removeEventListener('keydown', unlockAudio);
+  };
+  window.addEventListener('pointerdown', unlockAudio, { once: true });
+  window.addEventListener('keydown', unlockAudio, { once: true });
+}
+
 export function playClickSound(enabled = true) {
   if (!enabled) return;
   const ctx = getAudioContext();

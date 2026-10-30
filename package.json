@@ -9,7 +9,7 @@
     "preview": "node node_modules/vite/bin/vite.js preview",
     "server": "node node_modules/tsx/dist/cli.mjs server/index.ts",
     "start": "node node_modules/tsx/dist/cli.mjs server/index.ts",
-    "test": "node node_modules/tsx/dist/cli.mjs test/room-sync.test.ts"
+    "test": "node node_modules/tsx/dist/cli.mjs test/room-sync.test.ts && node node_modules/tsx/dist/cli.mjs test/socket-multiplayer.test.ts"
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",

@@ -148,11 +148,15 @@ export const TimerCard: React.FC<TimerCardProps> = ({
         </div>
 
         {/* Synced banner if controlled by Host */}
-        {isSyncedControlledByHost && (
+        {isSyncedControlledByHost ? (
           <div className="mt-4 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/20 text-xs text-white/90">
             <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
             <span>Synced timer controlled by room host</span>
           </div>
+        ) : (
+          <p className="text-[11px] text-white/50 mt-4 hidden sm:block select-none">
+            Press <kbd className="px-1.5 py-0.5 rounded bg-white/20 text-white/90 font-mono text-[10px]">Space</kbd> to {isRunning ? 'pause' : 'start'}
+          </p>
         )}
       </div>
 

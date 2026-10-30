@@ -59,6 +59,13 @@ export interface SyncedTimerState {
   updatedAt: number;
 }
 
+export interface RoomTimerSettings {
+  pomodoroTime: number; // in minutes
+  shortBreakTime: number;
+  longBreakTime: number;
+  longBreakInterval: number;
+}
+
 export interface ChatMessage {
   id: string;
   senderId: string;
@@ -82,6 +89,8 @@ export interface RoomState {
   hostId: string;
   syncMode: RoomSyncMode;
   timer: SyncedTimerState;
+  timerSettings?: RoomTimerSettings;
   participants: Participant[];
   messages: ChatMessage[];
 }
+
