@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import confetti from 'canvas-confetti';
-import { Users } from 'lucide-react';
+import { Users, Clock, MessageSquare } from 'lucide-react';
 import { TimerMode, Task, UserSettings, UserStats, RoomState, RoomSyncMode, RoomReaction, ChatMessage } from './types';
 import {
   getOrCreateUser,
@@ -23,6 +23,8 @@ import { SettingsModal } from './components/SettingsModal';
 import { ReportModal } from './components/ReportModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import { FloatingReactions } from './components/FloatingReactions';
+import { RoomMembersPanel } from './components/RoomMembersPanel';
+import { RoomChatPanel } from './components/RoomChatPanel';
 
 export function App() {
   // State
@@ -41,6 +43,7 @@ export function App() {
   // Online Room State
   const [room, setRoom] = useState<RoomState | null>(null);
   const [floatingReactions, setFloatingReactions] = useState<RoomReaction[]>([]);
+  const [mobileRoomTab, setMobileRoomTab] = useState<'timer' | 'members' | 'chat'>('timer');
 
   // Modals
   const [isRoomsOpen, setIsRoomsOpen] = useState(false);
@@ -50,6 +53,14 @@ export function App() {
 
   const isHost = room ? room.hostId === user.id : true;
   const isSyncedFollower = room?.syncMode === 'synced' && !isHost;
+
+  const isSyncedFollowerRef = useRef(isSyncedFollower);
+  isSyncedFollowerRef.current = isSyncedFollower;
+
+  const userRef = useRef(user);
+  userRef.current = user;
+
+  const handleTimerCompletionRef = useRef<(skipRoomEmit?: boolean) => void>(() => {});
 
   // Active task object
   const activeTask = tasks.find((t) => t.id === activeTaskId) || null;
@@ -74,7 +85,7 @@ export function App() {
     const unsubState = socketService.onRoomState((updatedRoom) => {
       setRoom(updatedRoom);
       // If synced room and not host, update local timer
-      if (updatedRoom.syncMode === 'synced' && updatedRoom.hostId !== user.id) {
+      if (updatedRoom.syncMode === 'synced' && updatedRoom.hostId !== userRef.current.id) {
         const t = updatedRoom.timer;
         setMode(t.mode);
         setTimeLeft(t.timeLeft);
@@ -82,6 +93,16 @@ export function App() {
         setIsRunning(t.isRunning);
         setCycle(t.cycle);
       }
+    });
+
+    const unsubParticipants = socketService.onParticipantsUpdated(({ participants }) => {
+      setRoom((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          participants,
+        };
+      });
     });
 
     const unsubMsg = socketService.onRoomMessage((msg: ChatMessage) => {
@@ -103,15 +124,15 @@ export function App() {
     });
 
     const unsubTimerTick = socketService.onTimerTick(({ timeLeft: serverTimeLeft }) => {
-      if (isSyncedFollower) {
+      if (isSyncedFollowerRef.current) {
         setTimeLeft(serverTimeLeft);
       }
     });
 
     const unsubTimerCompleted = socketService.onTimerCompleted(({ room: completedRoom }) => {
       setRoom(completedRoom);
-      if (isSyncedFollower) {
-        handleTimerCompletion(true);
+      if (isSyncedFollowerRef.current) {
+        handleTimerCompletionRef.current(true);
       }
     });
 
@@ -119,18 +140,21 @@ export function App() {
     const params = new URLSearchParams(window.location.search);
     const roomParam = params.get('room');
     if (roomParam) {
-      handleJoinRoom(roomParam);
-      setIsRoomsOpen(true);
+      const cleanCode = roomParam.toUpperCase().trim();
+      socketService.joinRoom(cleanCode, userRef.current);
+      window.history.replaceState(null, '', `?room=${cleanCode}`);
+      setMobileRoomTab('timer');
     }
 
     return () => {
       unsubState();
+      unsubParticipants();
       unsubMsg();
       unsubReaction();
       unsubTimerTick();
       unsubTimerCompleted();
     };
-  }, [isSyncedFollower, user]);
+  }, []);
 
   // Update online participant status when user, activeTask, tasks, or pomodoros change
   useEffect(() => {
@@ -270,6 +294,8 @@ export function App() {
     },
     [mode, duration, settings, activeTaskId, cycle, room, isHost]
   );
+
+  handleTimerCompletionRef.current = handleTimerCompletion;
 
   // Timer interval countdown
   useEffect(() => {
@@ -421,6 +447,8 @@ export function App() {
     const cleanCode = code.toUpperCase().trim();
     socketService.joinRoom(cleanCode, user);
     window.history.replaceState(null, '', `?room=${cleanCode}`);
+    setIsRoomsOpen(false);
+    setMobileRoomTab('timer');
   };
 
   const handleCreateRoom = (name: string, syncMode: RoomSyncMode) => {
@@ -433,6 +461,8 @@ export function App() {
     };
     socketService.joinRoom(randomCode, user, name, syncMode, timerSettings);
     window.history.replaceState(null, '', `?room=${randomCode}`);
+    setIsRoomsOpen(false);
+    setMobileRoomTab('timer');
   };
 
   const handleLeaveRoom = () => {
@@ -450,7 +480,7 @@ export function App() {
   };
 
   const handleSendRoomMessage = (text: string) => {
-    if (room) {
+    if (room && !isChatLocked) {
       socketService.sendChatMessage(room.code, text);
     }
   };
@@ -516,8 +546,30 @@ export function App() {
     setActiveTaskId(null);
   };
 
-  // Dynamic Theme Colors matching Pomofocus
+  const isPureFocus = isRunning && mode === 'pomodoro';
+  const isChatLocked = isRunning && mode === 'pomodoro';
+
+  // Synchronize document.body background for full-bleed dark immersion
+  useEffect(() => {
+    if (isPureFocus) {
+      document.body.style.backgroundColor = '#09090b';
+    } else {
+      const bgMap: Record<string, Record<TimerMode, string>> = {
+        classic: { pomodoro: '#ba4949', shortBreak: '#38858a', longBreak: '#397097' },
+        cockpit: { pomodoro: '#0f172a', shortBreak: '#134e4a', longBreak: '#1e1b4b' },
+        forest: { pomodoro: '#1b4332', shortBreak: '#2d6a4f', longBreak: '#40916c' },
+        sunset: { pomodoro: '#701a75', shortBreak: '#4c1d95', longBreak: '#312e81' },
+      };
+      const themeColors = bgMap[settings.colorTheme] || bgMap.classic;
+      document.body.style.backgroundColor = themeColors[mode] || '#ba4949';
+    }
+  }, [isPureFocus, settings.colorTheme, mode]);
+
+  // Dynamic Theme Colors matching Pomofocus (pure focus black mode when running pomodoro)
   const getThemeBackground = () => {
+    if (isPureFocus) {
+      return 'bg-[#09090b] text-white';
+    }
     const theme = settings.colorTheme;
     if (theme === 'cockpit') {
       if (mode === 'pomodoro') return 'bg-[#0f172a]';
@@ -542,7 +594,7 @@ export function App() {
 
   return (
     <div
-      className={`min-h-screen ${getThemeBackground()} transition-colors duration-500 flex flex-col font-sans px-4 select-text`}
+      className={`min-h-screen ${getThemeBackground()} transition-colors duration-700 flex flex-col font-sans px-3 sm:px-4 select-text`}
     >
       {/* Floating animated reactions */}
       <FloatingReactions reactions={floatingReactions} />
@@ -551,125 +603,174 @@ export function App() {
       <Navbar
         user={user}
         room={room}
+        isPureFocus={isPureFocus}
         onOpenReport={() => setIsReportOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenRooms={() => setIsRoomsOpen(true)}
         onOpenProfile={() => setIsProfileOpen(true)}
       />
 
+      {/* Mobile/Tablet Room View Switcher (< lg) */}
+      {room && (
+        <div className="w-full max-w-md mx-auto my-3 flex lg:hidden p-1 rounded-2xl bg-black/25 backdrop-blur-md border border-white/10 text-xs font-bold shadow-md">
+          <button
+            onClick={() => setMobileRoomTab('timer')}
+            className={`flex-1 py-2 px-3 rounded-xl flex items-center justify-center space-x-1.5 transition-all ${
+              mobileRoomTab === 'timer'
+                ? 'bg-white text-slate-900 shadow-md'
+                : 'text-white/80 hover:text-white'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5" />
+            <span>Timer</span>
+          </button>
+          <button
+            onClick={() => setMobileRoomTab('members')}
+            className={`flex-1 py-2 px-3 rounded-xl flex items-center justify-center space-x-1.5 transition-all ${
+              mobileRoomTab === 'members'
+                ? 'bg-white text-slate-900 shadow-md'
+                : 'text-white/80 hover:text-white'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>Room ({room.participants.length})</span>
+          </button>
+          <button
+            onClick={() => setMobileRoomTab('chat')}
+            className={`flex-1 py-2 px-3 rounded-xl flex items-center justify-center space-x-1.5 transition-all ${
+              mobileRoomTab === 'chat'
+                ? 'bg-white text-slate-900 shadow-md'
+                : 'text-white/80 hover:text-white'
+            }`}
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+            <span>Chat ({room.messages.length})</span>
+          </button>
+        </div>
+      )}
+
       {/* Main Focus Area */}
-      <main className="flex-1 flex flex-col items-center justify-start w-full max-w-2xl mx-auto">
-        {/* Timer Card */}
-        <TimerCard
-          mode={mode}
-          timeLeft={timeLeft}
-          duration={duration}
-          isRunning={isRunning}
-          cycle={cycle}
-          activeTask={activeTask}
-          room={room}
-          isHost={isHost}
-          themeColorKey={settings.colorTheme}
-          onSetMode={handleSetMode}
-          onToggleTimer={handleToggleTimer}
-          onSkipTimer={handleSkipTimer}
-          onResetTimer={handleResetTimer}
-          onToggleActiveTaskComplete={() => activeTaskId && handleToggleComplete(activeTaskId)}
-        />
+      <main
+        className={`flex-1 w-full mx-auto pb-12 transition-all ${
+          room ? 'max-w-7xl' : 'max-w-2xl'
+        }`}
+      >
+        {room ? (
+          /* Active Room 3-Column Layout: Left (Room/Members), Center (Timer+Tasks), Right (Live Chat) */
+          <div className="w-full flex flex-col lg:flex-row items-start justify-center gap-6 mt-2 sm:mt-4">
+            {/* Left Column: Room & Participants Panel */}
+            <div
+              className={`w-full lg:w-72 xl:w-80 shrink-0 ${
+                mobileRoomTab === 'members' ? 'block' : 'hidden lg:block'
+              }`}
+            >
+              <RoomMembersPanel
+                room={room}
+                user={user}
+                isHost={isHost}
+                isPureFocus={isPureFocus}
+                onToggleSyncMode={handleToggleRoomSyncMode}
+                onSendReaction={handleSendRoomReaction}
+                onLeaveRoom={handleLeaveRoom}
+              />
+            </div>
 
-        {/* Live Study Accountability Strip when in room */}
-        {room && (
-          <div className="w-full max-w-2xl px-2 my-4">
-            <div className="p-3.5 rounded-2xl bg-black/15 backdrop-blur-md border border-white/10 shadow-md">
-              <div className="flex items-center justify-between mb-2.5">
-                <div className="flex items-center space-x-2">
-                  <Users className="w-4 h-4 text-emerald-300" />
-                  <span className="text-xs font-bold uppercase tracking-wider text-white/90">
-                    Room {room.code} • Peer Accountability
-                  </span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/20 text-white font-bold">
-                    {room.participants.length} studying
-                  </span>
-                </div>
-                <button
-                  onClick={() => setIsRoomsOpen(true)}
-                  className="text-xs font-bold text-white/90 hover:text-white underline hover:no-underline"
-                >
-                  View Details & Chat →
-                </button>
-              </div>
+            {/* Center Column: Timer Card + Task List */}
+            <div
+              className={`flex-1 w-full max-w-xl mx-auto flex flex-col items-center justify-start ${
+                mobileRoomTab === 'timer' ? 'block' : 'hidden lg:block'
+              }`}
+            >
+              <TimerCard
+                mode={mode}
+                timeLeft={timeLeft}
+                duration={duration}
+                isRunning={isRunning}
+                cycle={cycle}
+                activeTask={activeTask}
+                room={room}
+                isHost={isHost}
+                themeColorKey={settings.colorTheme}
+                isPureFocus={isPureFocus}
+                onSetMode={handleSetMode}
+                onToggleTimer={handleToggleTimer}
+                onSkipTimer={handleSkipTimer}
+                onResetTimer={handleResetTimer}
+                onToggleActiveTaskComplete={() => activeTaskId && handleToggleComplete(activeTaskId)}
+              />
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {room.participants.map((p) => {
-                  const isFocusing = p.status === 'focusing';
-                  const isBreak = p.status === 'shortBreak' || p.status === 'longBreak';
-                  return (
-                    <div
-                      key={p.id}
-                      className="flex items-center justify-between p-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 transition-all text-xs"
-                    >
-                      <div className="flex items-center space-x-2 min-w-0">
-                        <span className="text-lg relative shrink-0">
-                          {p.avatar}
-                          <span
-                            className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-white ${
-                              isFocusing ? 'bg-emerald-400 animate-pulse' : isBreak ? 'bg-blue-400' : 'bg-slate-400'
-                            }`}
-                          />
-                        </span>
-                        <div className="min-w-0 truncate">
-                          <div className="flex items-center space-x-1.5 font-bold text-white truncate">
-                            <span className="truncate">{p.name}</span>
-                            {p.id === user.id && (
-                              <span className="text-[10px] text-white/60 font-normal shrink-0">(You)</span>
-                            )}
-                          </div>
-                          <div className="text-[11px] text-white/80 truncate">
-                            {p.currentTaskTitle ? (
-                              <span className="truncate">🎯 {p.currentTaskTitle}</span>
-                            ) : (
-                              <span className="italic text-white/50">Focusing</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col items-end shrink-0 pl-2">
-                        <span className="font-bold text-white bg-white/20 px-2 py-0.5 rounded-md text-[11px]">
-                          {p.taskEst
-                            ? `${p.taskAct ?? 0}/${p.taskEst} 🍅`
-                            : `🍅 ${p.completedPomodoros || 0}`}
-                        </span>
-                        {typeof p.remainingStudyPomodoros === 'number' && (
-                          <span className="text-[10px] text-white/70 mt-0.5">
-                            {p.remainingStudyPomodoros === 0
-                              ? 'Done! ✨'
-                              : `${p.remainingStudyPomodoros} left`}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className="w-full mt-6">
+                <TaskList
+                  tasks={tasks}
+                  activeTaskId={activeTaskId}
+                  pomodoroMinutes={settings.pomodoroTime}
+                  isPureFocus={isPureFocus}
+                  onSelectTask={handleSelectTask}
+                  onToggleComplete={handleToggleComplete}
+                  onAddTask={handleAddTask}
+                  onUpdateTask={handleUpdateTask}
+                  onDeleteTask={handleDeleteTask}
+                  onClearCompleted={handleClearCompleted}
+                  onClearActPomodoros={handleClearActPomodoros}
+                  onClearAllTasks={handleClearAllTasks}
+                />
               </div>
             </div>
+
+            {/* Right Column: Live Room Chat with Focus Lock */}
+            <div
+              className={`w-full lg:w-80 xl:w-96 shrink-0 ${
+                mobileRoomTab === 'chat' ? 'block' : 'hidden lg:block'
+              }`}
+            >
+              <RoomChatPanel
+                messages={room.messages}
+                user={user}
+                isChatLocked={isChatLocked}
+                isPureFocus={isPureFocus}
+                onSendMessage={handleSendRoomMessage}
+              />
+            </div>
+          </div>
+        ) : (
+          /* Solo View: Classic Centered Flow */
+          <div className="flex flex-col items-center justify-start w-full max-w-2xl mx-auto">
+            {/* Timer Card */}
+            <TimerCard
+              mode={mode}
+              timeLeft={timeLeft}
+              duration={duration}
+              isRunning={isRunning}
+              cycle={cycle}
+              activeTask={activeTask}
+              room={room}
+              isHost={isHost}
+              themeColorKey={settings.colorTheme}
+              isPureFocus={isPureFocus}
+              onSetMode={handleSetMode}
+              onToggleTimer={handleToggleTimer}
+              onSkipTimer={handleSkipTimer}
+              onResetTimer={handleResetTimer}
+              onToggleActiveTaskComplete={() => activeTaskId && handleToggleComplete(activeTaskId)}
+            />
+
+            {/* Task List */}
+            <TaskList
+              tasks={tasks}
+              activeTaskId={activeTaskId}
+              pomodoroMinutes={settings.pomodoroTime}
+              isPureFocus={isPureFocus}
+              onSelectTask={handleSelectTask}
+              onToggleComplete={handleToggleComplete}
+              onAddTask={handleAddTask}
+              onUpdateTask={handleUpdateTask}
+              onDeleteTask={handleDeleteTask}
+              onClearCompleted={handleClearCompleted}
+              onClearActPomodoros={handleClearActPomodoros}
+              onClearAllTasks={handleClearAllTasks}
+            />
           </div>
         )}
-
-        {/* Task List */}
-        <TaskList
-          tasks={tasks}
-          activeTaskId={activeTaskId}
-          pomodoroMinutes={settings.pomodoroTime}
-          onSelectTask={handleSelectTask}
-          onToggleComplete={handleToggleComplete}
-          onAddTask={handleAddTask}
-          onUpdateTask={handleUpdateTask}
-          onDeleteTask={handleDeleteTask}
-          onClearCompleted={handleClearCompleted}
-          onClearActPomodoros={handleClearActPomodoros}
-          onClearAllTasks={handleClearAllTasks}
-        />
       </main>
 
       {/* Modals */}
@@ -678,6 +779,7 @@ export function App() {
         onClose={() => setIsRoomsOpen(false)}
         user={user}
         room={room}
+        isChatLocked={isChatLocked}
         onJoinRoom={handleJoinRoom}
         onCreateRoom={handleCreateRoom}
         onLeaveRoom={handleLeaveRoom}

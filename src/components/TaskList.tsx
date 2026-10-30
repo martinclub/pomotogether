@@ -6,6 +6,7 @@ interface TaskListProps {
   tasks: Task[];
   activeTaskId: string | null;
   pomodoroMinutes: number;
+  isPureFocus?: boolean;
   onSelectTask: (id: string) => void;
   onToggleComplete: (id: string) => void;
   onAddTask: (task: Omit<Task, 'id' | 'createdAt'>) => void;
@@ -20,6 +21,7 @@ export const TaskList: React.FC<TaskListProps> = ({
   tasks,
   activeTaskId,
   pomodoroMinutes,
+  isPureFocus = false,
   onSelectTask,
   onToggleComplete,
   onAddTask,
@@ -126,26 +128,36 @@ export const TaskList: React.FC<TaskListProps> = ({
           {menuOpen && (
             <>
               <div className="fixed inset-0 z-20" onClick={() => setMenuOpen(false)} />
-              <div className="absolute right-0 mt-2 w-52 bg-white rounded-xl shadow-2xl py-2 z-30 text-slate-800 text-sm border border-slate-100 animate-popIn">
+              <div
+                className={`absolute right-0 mt-2 w-52 rounded-xl shadow-2xl py-2 z-30 text-sm border animate-popIn ${
+                  isPureFocus
+                    ? 'bg-zinc-900 border-zinc-700 text-white shadow-[0_20px_50px_rgba(0,0,0,0.8)]'
+                    : 'bg-white border-slate-100 text-slate-800'
+                }`}
+              >
                 <button
                   onClick={() => {
                     onClearCompleted();
                     setMenuOpen(false);
                   }}
-                  className="w-full px-4 py-2 text-left hover:bg-slate-100 flex items-center gap-2 text-slate-700"
+                  className={`w-full px-4 py-2 text-left flex items-center gap-2 ${
+                    isPureFocus ? 'hover:bg-zinc-800 text-zinc-200' : 'hover:bg-slate-100 text-slate-700'
+                  }`}
                 >
-                  <Check className="w-4 h-4 text-emerald-600" /> Clear finished tasks
+                  <Check className="w-4 h-4 text-emerald-500" /> Clear finished tasks
                 </button>
                 <button
                   onClick={() => {
                     onClearActPomodoros();
                     setMenuOpen(false);
                   }}
-                  className="w-full px-4 py-2 text-left hover:bg-slate-100 flex items-center gap-2 text-slate-700"
+                  className={`w-full px-4 py-2 text-left flex items-center gap-2 ${
+                    isPureFocus ? 'hover:bg-zinc-800 text-zinc-200' : 'hover:bg-slate-100 text-slate-700'
+                  }`}
                 >
-                  <RotateCcw className="w-4 h-4 text-amber-600" /> Clear act pomodoros
+                  <RotateCcw className="w-4 h-4 text-amber-500" /> Clear act pomodoros
                 </button>
-                <div className="my-1 border-t border-slate-100" />
+                <div className={`my-1 border-t ${isPureFocus ? 'border-zinc-800' : 'border-slate-100'}`} />
                 <button
                   onClick={() => {
                     if (confirm('Clear all tasks?')) {
@@ -153,7 +165,9 @@ export const TaskList: React.FC<TaskListProps> = ({
                     }
                     setMenuOpen(false);
                   }}
-                  className="w-full px-4 py-2 text-left hover:bg-rose-50 flex items-center gap-2 text-rose-600 font-medium"
+                  className={`w-full px-4 py-2 text-left flex items-center gap-2 font-medium ${
+                    isPureFocus ? 'hover:bg-rose-950/40 text-rose-400' : 'hover:bg-rose-50 text-rose-600'
+                  }`}
                 >
                   <Trash2 className="w-4 h-4" /> Clear all tasks
                 </button>
@@ -174,35 +188,53 @@ export const TaskList: React.FC<TaskListProps> = ({
               <form
                 key={task.id}
                 onSubmit={handleSaveEdit}
-                className="bg-white rounded-xl p-4 shadow-lg text-slate-800 border border-slate-200 animate-popIn"
+                className={`rounded-xl p-4 shadow-lg border animate-popIn ${
+                  isPureFocus
+                    ? 'bg-zinc-900 border-zinc-700 text-white shadow-[0_15px_30px_rgba(0,0,0,0.7)]'
+                    : 'bg-white border-slate-200 text-slate-800'
+                }`}
               >
                 <input
                   type="text"
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
                   placeholder="What are you working on?"
-                  className="w-full text-base font-semibold outline-none border-b border-slate-200 pb-2 text-slate-800 placeholder-slate-400"
+                  className={`w-full text-base font-semibold outline-none border-b pb-2 ${
+                    isPureFocus
+                      ? 'border-zinc-700 bg-transparent text-white placeholder-zinc-500'
+                      : 'border-slate-200 text-slate-800 placeholder-slate-400'
+                  }`}
                   autoFocus
                 />
 
                 <div className="mt-3 flex items-center justify-between text-sm">
-                  <span className="font-medium text-slate-600">Act / Est Pomodoros:</span>
+                  <span className={`font-medium ${isPureFocus ? 'text-zinc-400' : 'text-slate-600'}`}>
+                    Act / Est Pomodoros:
+                  </span>
                   <div className="flex items-center space-x-2">
                     <input
                       type="number"
                       min={0}
                       value={editAct}
                       onChange={(e) => setEditAct(parseInt(e.target.value) || 0)}
-                      className="w-14 text-center bg-slate-100 rounded-md py-1 font-bold border border-slate-300"
+                      className={`w-14 text-center rounded-md py-1 font-bold border ${
+                        isPureFocus
+                          ? 'bg-zinc-800 text-white border-zinc-700'
+                          : 'bg-slate-100 text-slate-800 border-slate-300'
+                      }`}
                       title="Actual pomodoros"
                     />
-                    <span className="text-slate-400 font-bold">/</span>
+                    <span className={`font-bold ${isPureFocus ? 'text-zinc-500' : 'text-slate-400'}`}>/</span>
                     <input
                       type="number"
                       min={1}
                       value={editEst}
                       onChange={(e) => setEditEst(parseInt(e.target.value) || 1)}
-                      className="w-14 text-center bg-slate-100 rounded-md py-1 font-bold border border-slate-300"
+                      className={`w-14 text-center rounded-md py-1 font-bold border ${
+                        isPureFocus
+                          ? 'bg-zinc-800 text-white border-zinc-700'
+                          : 'bg-slate-100 text-slate-800 border-slate-300'
+                      }`}
                       title="Estimated pomodoros"
                     />
                   </div>
@@ -214,15 +246,21 @@ export const TaskList: React.FC<TaskListProps> = ({
                     onChange={(e) => setEditNotes(e.target.value)}
                     placeholder="Notes..."
                     rows={2}
-                    className="w-full text-xs p-2 bg-slate-50 rounded-lg border border-slate-200 outline-none text-slate-700 resize-none"
+                    className={`w-full text-xs p-2 rounded-lg border outline-none resize-none ${
+                      isPureFocus
+                        ? 'bg-zinc-800/80 border-zinc-700 text-white placeholder-zinc-500'
+                        : 'bg-slate-50 border-slate-200 text-slate-700'
+                    }`}
                   />
                 </div>
 
-                <div className="mt-4 flex items-center justify-between pt-2 border-t border-slate-100">
+                <div className={`mt-4 flex items-center justify-between pt-2 border-t ${
+                  isPureFocus ? 'border-zinc-800' : 'border-slate-100'
+                }`}>
                   <button
                     type="button"
                     onClick={() => onDeleteTask(task.id)}
-                    className="text-xs text-rose-500 hover:text-rose-700 font-semibold flex items-center gap-1"
+                    className="text-xs text-rose-500 hover:text-rose-400 font-semibold flex items-center gap-1"
                   >
                     <Trash2 className="w-3.5 h-3.5" /> Delete
                   </button>
@@ -230,13 +268,19 @@ export const TaskList: React.FC<TaskListProps> = ({
                     <button
                       type="button"
                       onClick={() => setEditingTaskId(null)}
-                      className="px-3 py-1.5 text-xs font-semibold text-slate-500 hover:text-slate-700"
+                      className={`px-3 py-1.5 text-xs font-semibold ${
+                        isPureFocus ? 'text-zinc-400 hover:text-white' : 'text-slate-500 hover:text-slate-700'
+                      }`}
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
-                      className="px-4 py-1.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-lg shadow-sm"
+                      className={`px-4 py-1.5 text-xs font-bold rounded-lg shadow-sm ${
+                        isPureFocus
+                          ? 'bg-white text-zinc-950 hover:bg-zinc-200'
+                          : 'bg-slate-900 text-white hover:bg-slate-800'
+                      }`}
                     >
                       Save
                     </button>
@@ -250,9 +294,17 @@ export const TaskList: React.FC<TaskListProps> = ({
             <div
               key={task.id}
               onClick={() => onSelectTask(task.id)}
-              className={`group bg-white rounded-xl p-3 sm:p-4 shadow-sm text-slate-800 cursor-pointer transition-all flex items-center justify-between border-l-4 ${
+              className={`group rounded-xl p-3 sm:p-4 shadow-sm cursor-pointer transition-all flex items-center justify-between border-l-4 ${
+                isPureFocus
+                  ? 'bg-zinc-900/90 text-white border border-zinc-800/90'
+                  : 'bg-white text-slate-800'
+              } ${
                 isActive
-                  ? 'border-l-slate-900 shadow-md ring-1 ring-slate-900/10'
+                  ? isPureFocus
+                    ? 'border-l-white ring-1 ring-white/20 shadow-md'
+                    : 'border-l-slate-900 shadow-md ring-1 ring-slate-900/10'
+                  : isPureFocus
+                  ? 'border-l-transparent hover:border-l-zinc-500'
                   : 'border-l-transparent hover:border-l-slate-300'
               }`}
             >
@@ -266,6 +318,8 @@ export const TaskList: React.FC<TaskListProps> = ({
                   className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all shrink-0 ${
                     task.completed
                       ? 'bg-emerald-500 border-emerald-500 text-white'
+                      : isPureFocus
+                      ? 'border-zinc-600 hover:border-zinc-400 text-transparent'
                       : 'border-slate-300 hover:border-slate-400 text-transparent'
                   }`}
                 >
@@ -274,25 +328,45 @@ export const TaskList: React.FC<TaskListProps> = ({
 
                 <div className="truncate">
                   <p
-                    className={`font-semibold text-sm sm:text-base text-slate-800 truncate ${
-                      task.completed ? 'line-through text-slate-400 font-normal' : ''
+                    className={`font-semibold text-sm sm:text-base truncate ${
+                      task.completed
+                        ? isPureFocus
+                          ? 'line-through text-zinc-500 font-normal'
+                          : 'line-through text-slate-400 font-normal'
+                        : isPureFocus
+                        ? 'text-white'
+                        : 'text-slate-800'
                     }`}
                   >
                     {task.title}
                   </p>
                   {task.notes && (
-                    <p className="text-xs text-slate-400 truncate mt-0.5">{task.notes}</p>
+                    <p
+                      className={`text-xs truncate mt-0.5 ${
+                        isPureFocus ? 'text-zinc-400' : 'text-slate-400'
+                      }`}
+                    >
+                      {task.notes}
+                    </p>
                   )}
                 </div>
               </div>
 
               <div className="flex items-center space-x-2 shrink-0">
-                <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-md">
+                <span
+                  className={`text-xs font-bold px-2 py-1 rounded-md ${
+                    isPureFocus ? 'text-zinc-300 bg-zinc-800' : 'text-slate-500 bg-slate-100'
+                  }`}
+                >
                   {task.act}/{task.est}
                 </span>
                 <button
                   onClick={(e) => handleStartEdit(task, e)}
-                  className="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-all opacity-70 group-hover:opacity-100"
+                  className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all opacity-70 group-hover:opacity-100 ${
+                    isPureFocus
+                      ? 'hover:bg-zinc-800 text-zinc-400 hover:text-white'
+                      : 'hover:bg-slate-100 text-slate-400 hover:text-slate-700'
+                  }`}
                   title="Edit task"
                 >
                   <Edit2 className="w-3.5 h-3.5" />
@@ -307,24 +381,38 @@ export const TaskList: React.FC<TaskListProps> = ({
       {isAdding ? (
         <form
           onSubmit={handleSaveNew}
-          className="mt-3 bg-white rounded-xl p-4 shadow-xl text-slate-800 border border-slate-200 animate-popIn"
+          className={`mt-3 rounded-xl p-4 shadow-xl border animate-popIn ${
+            isPureFocus
+              ? 'bg-zinc-900 border-zinc-700 text-white shadow-[0_20px_40px_rgba(0,0,0,0.8)]'
+              : 'bg-white border-slate-200 text-slate-800'
+          }`}
         >
           <input
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="What are you working on?"
-            className="w-full text-base font-semibold outline-none border-b border-slate-200 pb-2 text-slate-800 placeholder-slate-400"
+            className={`w-full text-base font-semibold outline-none border-b pb-2 ${
+              isPureFocus
+                ? 'border-zinc-700 bg-transparent text-white placeholder-zinc-500'
+                : 'border-slate-200 text-slate-800 placeholder-slate-400'
+            }`}
             autoFocus
           />
 
           <div className="mt-4 flex items-center justify-between text-sm">
-            <span className="font-medium text-slate-600">Est Pomodoros:</span>
+            <span className={`font-medium ${isPureFocus ? 'text-zinc-400' : 'text-slate-600'}`}>
+              Est Pomodoros:
+            </span>
             <div className="flex items-center space-x-1">
               <button
                 type="button"
                 onClick={() => setEst(Math.max(1, est - 1))}
-                className="w-7 h-7 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center justify-center"
+                className={`w-7 h-7 rounded-md font-bold flex items-center justify-center ${
+                  isPureFocus
+                    ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                }`}
               >
                 -
               </button>
@@ -333,12 +421,20 @@ export const TaskList: React.FC<TaskListProps> = ({
                 min={1}
                 value={est}
                 onChange={(e) => setEst(parseInt(e.target.value) || 1)}
-                className="w-12 text-center bg-slate-100 rounded-md py-1 font-bold border border-slate-300"
+                className={`w-12 text-center rounded-md py-1 font-bold border ${
+                  isPureFocus
+                    ? 'bg-zinc-800 text-white border-zinc-700'
+                    : 'bg-slate-100 text-slate-800 border-slate-300'
+                }`}
               />
               <button
                 type="button"
                 onClick={() => setEst(est + 1)}
-                className="w-7 h-7 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center justify-center"
+                className={`w-7 h-7 rounded-md font-bold flex items-center justify-center ${
+                  isPureFocus
+                    ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                }`}
               >
                 +
               </button>
@@ -352,7 +448,11 @@ export const TaskList: React.FC<TaskListProps> = ({
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Some notes..."
                 rows={2}
-                className="w-full text-xs p-2 bg-slate-50 rounded-lg border border-slate-200 outline-none text-slate-700 resize-none"
+                className={`w-full text-xs p-2 rounded-lg border outline-none resize-none ${
+                  isPureFocus
+                    ? 'bg-zinc-800/80 border-zinc-700 text-white placeholder-zinc-500'
+                    : 'bg-slate-50 border-slate-200 text-slate-700'
+                }`}
               />
             </div>
           ) : (
@@ -360,25 +460,35 @@ export const TaskList: React.FC<TaskListProps> = ({
               <button
                 type="button"
                 onClick={() => setShowNotes(true)}
-                className="text-xs text-slate-500 hover:text-slate-800 underline font-medium"
+                className={`text-xs underline font-medium ${
+                  isPureFocus ? 'text-zinc-400 hover:text-white' : 'text-slate-500 hover:text-slate-800'
+                }`}
               >
                 + Add Note
               </button>
             </div>
           )}
 
-          <div className="mt-4 flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
+          <div className={`mt-4 flex items-center justify-end space-x-2 pt-2 border-t ${
+            isPureFocus ? 'border-zinc-800' : 'border-slate-100'
+          }`}>
             <button
               type="button"
               onClick={() => setIsAdding(false)}
-              className="px-4 py-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800"
+              className={`px-4 py-1.5 text-xs font-semibold ${
+                isPureFocus ? 'text-zinc-400 hover:text-white' : 'text-slate-500 hover:text-slate-800'
+              }`}
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={!title.trim()}
-              className="px-5 py-1.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-50 rounded-lg shadow-sm"
+              className={`px-5 py-1.5 text-xs font-bold rounded-lg shadow-sm disabled:opacity-50 ${
+                isPureFocus
+                  ? 'bg-white text-zinc-950 hover:bg-zinc-200'
+                  : 'bg-slate-900 text-white hover:bg-slate-800'
+              }`}
             >
               Save
             </button>
@@ -387,7 +497,11 @@ export const TaskList: React.FC<TaskListProps> = ({
       ) : (
         <button
           onClick={handleStartAdd}
-          className="w-full mt-3 py-3 rounded-xl border-2 border-dashed border-white/40 hover:border-white/80 bg-black/10 hover:bg-black/20 text-white/90 font-bold text-sm flex items-center justify-center space-x-2 transition-all cursor-pointer"
+          className={`w-full mt-3 py-3 rounded-xl border-2 border-dashed font-bold text-sm flex items-center justify-center space-x-2 transition-all cursor-pointer ${
+            isPureFocus
+              ? 'border-zinc-800 hover:border-zinc-700 bg-zinc-900/60 hover:bg-zinc-900 text-zinc-300'
+              : 'border-white/40 hover:border-white/80 bg-black/10 hover:bg-black/20 text-white/90'
+          }`}
         >
           <Plus className="w-4 h-4" />
           <span>Add Task</span>
@@ -396,7 +510,9 @@ export const TaskList: React.FC<TaskListProps> = ({
 
       {/* Summary Footer */}
       {tasks.length > 0 && (
-        <div className="mt-6 pt-4 border-t border-white/20 flex flex-wrap items-center justify-between text-xs sm:text-sm text-white/80 font-medium px-2">
+        <div className={`mt-6 pt-4 border-t flex flex-wrap items-center justify-between text-xs sm:text-sm font-medium px-2 ${
+          isPureFocus ? 'border-zinc-800/80 text-zinc-400' : 'border-white/20 text-white/80'
+        }`}>
           <div className="space-x-4">
             <span>
               Est: <strong className="text-white">{totalEst}</strong> ({(totalEst * (pomodoroMinutes / 60)).toFixed(1)}h)

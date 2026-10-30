@@ -329,11 +329,11 @@ io.on('connection', (socket: Socket) => {
       const p = room.participants.find((p) => p.id === currentUserId);
       if (p) {
         p.status = status;
-        if (currentTaskTitle !== undefined) p.currentTaskTitle = currentTaskTitle;
+        p.currentTaskTitle = currentTaskTitle || undefined;
         if (completedPomodoros !== undefined) p.completedPomodoros = completedPomodoros;
-        if (taskAct !== undefined) p.taskAct = taskAct;
-        if (taskEst !== undefined) p.taskEst = taskEst;
-        if (remainingStudyPomodoros !== undefined) p.remainingStudyPomodoros = remainingStudyPomodoros;
+        p.taskAct = typeof taskAct === 'number' ? taskAct : undefined;
+        p.taskEst = typeof taskEst === 'number' ? taskEst : undefined;
+        p.remainingStudyPomodoros = typeof remainingStudyPomodoros === 'number' ? remainingStudyPomodoros : undefined;
 
         io.to(code).emit('room_participants_updated', { participants: room.participants });
       }
@@ -352,6 +352,11 @@ io.on('connection', (socket: Socket) => {
     const code = roomCode.toUpperCase();
     const room = rooms.get(code);
     if (!room || !currentUserId || !text.trim()) return;
+
+    // Enforce Focus Chat Lock on server for synced rooms
+    if (room.syncMode === 'synced' && room.timer.isRunning && room.timer.mode === 'pomodoro') {
+      return;
+    }
 
     const sender = room.participants.find((p) => p.id === currentUserId);
     if (!sender) return;

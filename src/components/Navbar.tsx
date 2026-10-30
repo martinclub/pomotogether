@@ -6,6 +6,7 @@ import { RoomState } from '../types';
 interface NavbarProps {
   user: LocalUser;
   room: RoomState | null;
+  isPureFocus?: boolean;
   onOpenReport: () => void;
   onOpenSettings: () => void;
   onOpenRooms: () => void;
@@ -15,13 +16,14 @@ interface NavbarProps {
 export const Navbar: React.FC<NavbarProps> = ({
   user,
   room,
+  isPureFocus = false,
   onOpenReport,
   onOpenSettings,
   onOpenRooms,
   onOpenProfile,
 }) => {
   return (
-    <header className="w-full max-w-2xl mx-auto flex items-center justify-between py-4 px-4 border-b border-black/10 transition-colors">
+    <header className={`w-full ${room ? 'max-w-7xl' : 'max-w-2xl'} mx-auto flex items-center justify-between py-4 px-4 sm:px-6 border-b ${isPureFocus ? 'border-zinc-800' : 'border-white/10'} transition-all duration-500`}>
       {/* Brand */}
       <div className="flex items-center space-x-2.5 cursor-pointer select-none">
         <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center p-0.5">

@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Users, Copy, Check, LogOut, Send, Crown, Sparkles, Radio, Share2 } from 'lucide-react';
+import { X, Users, Copy, Check, LogOut, Send, Crown, Sparkles, Radio, Share2, Lock } from 'lucide-react';
 import { RoomState, RoomSyncMode } from '../types';
 import { LocalUser } from '../utils/storage';
+import { getParticipantProgressMetrics } from './ParticipantProgress';
 
 interface OnlineRoomModalProps {
   isOpen: boolean;
   onClose: () => void;
   user: LocalUser;
   room: RoomState | null;
+  isChatLocked?: boolean;
   onJoinRoom: (code: string) => void;
   onCreateRoom: (name: string, syncMode: RoomSyncMode) => void;
   onLeaveRoom: () => void;
@@ -21,6 +23,7 @@ export const OnlineRoomModal: React.FC<OnlineRoomModalProps> = ({
   onClose,
   user,
   room,
+  isChatLocked = false,
   onJoinRoom,
   onCreateRoom,
   onLeaveRoom,
@@ -280,78 +283,73 @@ export const OnlineRoomModal: React.FC<OnlineRoomModalProps> = ({
                 </div>
 
                 {/* Participants List */}
-                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
                   {room.participants.map((p) => {
                     const isFocusing = p.status === 'focusing';
                     const isBreak = p.status === 'shortBreak' || p.status === 'longBreak';
+                    const metrics = getParticipantProgressMetrics(p);
                     return (
                       <div
                         key={p.id}
-                        className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50/80 hover:bg-slate-50 border border-slate-100 transition-all"
+                        className="p-2.5 rounded-xl bg-slate-50/80 hover:bg-slate-50 border border-slate-100 transition-all"
                       >
-                        <div className="flex items-center space-x-2.5 overflow-hidden">
-                          <div className="relative">
-                            <span className="text-xl">{p.avatar}</span>
-                            <span
-                              className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white ${
-                                isFocusing
-                                  ? 'bg-emerald-500 animate-pulse'
-                                  : isBreak
-                                  ? 'bg-blue-500'
-                                  : 'bg-slate-400'
-                              }`}
-                            />
-                          </div>
-
-                          <div className="truncate">
-                            <div className="flex items-center space-x-1.5">
-                              <span className="text-xs font-bold text-slate-800 truncate">
-                                {p.name}
-                              </span>
-                              {p.isHost && (
-                                <Crown className="w-3 h-3 text-amber-500 fill-amber-500 shrink-0" />
-                              )}
-                              {p.id === user.id && (
-                                <span className="text-[10px] text-slate-400 font-semibold">(You)</span>
-                              )}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2.5 overflow-hidden">
+                            <div className="relative shrink-0">
+                              <span className="text-xl">{p.avatar}</span>
+                              <span
+                                className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white ${
+                                  isFocusing
+                                    ? 'bg-emerald-500 animate-pulse'
+                                    : isBreak
+                                    ? 'bg-blue-500'
+                                    : 'bg-slate-400'
+                                }`}
+                              />
                             </div>
-                            <div className="flex items-center space-x-1.5 text-[11px] text-slate-600 truncate mt-0.5">
-                              {p.currentTaskTitle ? (
-                                <>
+
+                            <div className="truncate">
+                              <div className="flex items-center space-x-1.5">
+                                <span className="text-xs font-bold text-slate-800 truncate">
+                                  {p.name}
+                                </span>
+                                {p.isHost && (
+                                  <Crown className="w-3 h-3 text-amber-500 fill-amber-500 shrink-0" />
+                                )}
+                                {p.id === user.id && (
+                                  <span className="text-[10px] text-slate-400 font-semibold">(You)</span>
+                                )}
+                              </div>
+                              <div className="flex items-center space-x-1.5 text-[11px] text-slate-600 truncate mt-0.5">
+                                {p.currentTaskTitle ? (
                                   <span className="truncate font-medium text-slate-700">
                                     🎯 {p.currentTaskTitle}
                                   </span>
-                                  {p.taskEst ? (
-                                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/70 px-1.5 py-0.2 rounded border border-emerald-200 shrink-0">
-                                      {p.taskAct ?? 0}/{p.taskEst} 🍅
-                                    </span>
-                                  ) : null}
-                                </>
-                              ) : (
-                                <span className="text-slate-400 italic">No active task selected</span>
-                              )}
+                                ) : (
+                                  <span className="text-slate-400 italic">No active task</span>
+                                )}
+                              </div>
                             </div>
-                            {typeof p.remainingStudyPomodoros === 'number' && p.remainingStudyPomodoros > 0 && (
-                              <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-                                ⏳ {p.remainingStudyPomodoros} pomodoro{p.remainingStudyPomodoros > 1 ? 's' : ''} left in study
-                              </p>
-                            )}
+                          </div>
+
+                          <div className="flex flex-col items-end shrink-0 pl-2">
+                            <span className="text-xs font-bold text-slate-700 bg-white px-2 py-0.5 rounded-md border border-slate-200 shadow-xs">
+                              {metrics.label}
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-medium mt-0.5">
+                              {metrics.detail}
+                            </span>
                           </div>
                         </div>
 
-                        <div className="flex flex-col items-end shrink-0 pl-2">
-                          <div
-                            className="flex items-center space-x-1 text-xs font-bold text-slate-700 bg-white px-2 py-0.5 rounded-md border border-slate-200 shadow-sm"
-                            title="Completed Pomodoros"
-                          >
-                            <span>🍅</span>
-                            <span>{p.completedPomodoros || 0}</span>
+                        {/* Individual Progress Bar */}
+                        <div className="mt-2 pt-1.5 border-t border-slate-200/60">
+                          <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                            <div
+                              className="bg-emerald-500 h-full rounded-full transition-all duration-300"
+                              style={{ width: metrics.percent > 0 ? `${Math.max(4, metrics.percent)}%` : '0%' }}
+                            />
                           </div>
-                          {typeof p.remainingStudyPomodoros === 'number' && (
-                            <span className="text-[10px] font-medium text-slate-500 mt-0.5">
-                              {p.remainingStudyPomodoros === 0 ? '✨ Study Done' : `${p.remainingStudyPomodoros} left`}
-                            </span>
-                          )}
                         </div>
                       </div>
                     );
@@ -435,23 +433,47 @@ export const OnlineRoomModal: React.FC<OnlineRoomModalProps> = ({
               </div>
 
               {/* Chat Input */}
-              <form onSubmit={handleSendChat} className="flex items-center space-x-2">
-                <input
-                  type="text"
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  placeholder="Type a cheer or message..."
-                  className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                  maxLength={200}
-                />
-                <button
-                  type="submit"
-                  disabled={!chatInput.trim()}
-                  className="w-8 h-8 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white flex items-center justify-center transition-all shrink-0"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                </button>
-              </form>
+              {isChatLocked ? (
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs">
+                    <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    <span>Focus time active — chat is locked to prevent distractions. Available during breaks or when paused.</span>
+                  </div>
+                  <div className="flex items-center space-x-2 opacity-60">
+                    <input
+                      type="text"
+                      disabled
+                      placeholder="Chat locked during focus session..."
+                      className="flex-1 px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs text-slate-400 cursor-not-allowed outline-none"
+                    />
+                    <button
+                      type="button"
+                      disabled
+                      className="w-8 h-8 rounded-xl bg-slate-200 text-slate-400 flex items-center justify-center cursor-not-allowed shrink-0"
+                    >
+                      <Lock className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={handleSendChat} className="flex items-center space-x-2">
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    placeholder="Type a cheer or message..."
+                    className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    maxLength={200}
+                  />
+                  <button
+                    type="submit"
+                    disabled={!chatInput.trim()}
+                    className="w-8 h-8 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white flex items-center justify-center transition-all shrink-0"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                  </button>
+                </form>
+              )}
             </div>
           </div>
         )}
