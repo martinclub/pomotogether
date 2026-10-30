@@ -315,15 +315,43 @@ export const OnlineRoomModal: React.FC<OnlineRoomModalProps> = ({
                                 <span className="text-[10px] text-slate-400 font-semibold">(You)</span>
                               )}
                             </div>
-                            <p className="text-[11px] text-slate-500 truncate">
-                              {p.currentTaskTitle ? `Task: ${p.currentTaskTitle}` : 'Focusing'}
-                            </p>
+                            <div className="flex items-center space-x-1.5 text-[11px] text-slate-600 truncate mt-0.5">
+                              {p.currentTaskTitle ? (
+                                <>
+                                  <span className="truncate font-medium text-slate-700">
+                                    🎯 {p.currentTaskTitle}
+                                  </span>
+                                  {p.taskEst ? (
+                                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/70 px-1.5 py-0.2 rounded border border-emerald-200 shrink-0">
+                                      {p.taskAct ?? 0}/{p.taskEst} 🍅
+                                    </span>
+                                  ) : null}
+                                </>
+                              ) : (
+                                <span className="text-slate-400 italic">No active task selected</span>
+                              )}
+                            </div>
+                            {typeof p.remainingStudyPomodoros === 'number' && p.remainingStudyPomodoros > 0 && (
+                              <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                                ⏳ {p.remainingStudyPomodoros} pomodoro{p.remainingStudyPomodoros > 1 ? 's' : ''} left in study
+                              </p>
+                            )}
                           </div>
                         </div>
 
-                        <div className="flex items-center space-x-1 shrink-0 text-xs font-bold text-slate-600 bg-white px-2 py-0.5 rounded-md border border-slate-100">
-                          <span>🍅</span>
-                          <span>{p.completedPomodoros || 0}</span>
+                        <div className="flex flex-col items-end shrink-0 pl-2">
+                          <div
+                            className="flex items-center space-x-1 text-xs font-bold text-slate-700 bg-white px-2 py-0.5 rounded-md border border-slate-200 shadow-sm"
+                            title="Completed Pomodoros"
+                          >
+                            <span>🍅</span>
+                            <span>{p.completedPomodoros || 0}</span>
+                          </div>
+                          {typeof p.remainingStudyPomodoros === 'number' && (
+                            <span className="text-[10px] font-medium text-slate-500 mt-0.5">
+                              {p.remainingStudyPomodoros === 0 ? '✨ Study Done' : `${p.remainingStudyPomodoros} left`}
+                            </span>
+                          )}
                         </div>
                       </div>
                     );

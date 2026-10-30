@@ -43,6 +43,9 @@ export interface Participant {
   avatar: string;
   status: 'focusing' | 'shortBreak' | 'longBreak' | 'idle';
   currentTaskTitle?: string;
+  taskAct?: number;
+  taskEst?: number;
+  remainingStudyPomodoros?: number;
   completedPomodoros: number;
   isHost: boolean;
   joinedAt: number;

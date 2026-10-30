@@ -78,7 +78,10 @@ export const socketService = {
     roomCode: string,
     status: 'focusing' | 'shortBreak' | 'longBreak' | 'idle',
     currentTaskTitle?: string,
-    completedPomodoros?: number
+    completedPomodoros?: number,
+    taskAct?: number,
+    taskEst?: number,
+    remainingStudyPomodoros?: number
   ) {
     const s = getSocket();
     s.emit('update_status', {
@@ -86,6 +89,9 @@ export const socketService = {
       status,
       currentTaskTitle,
       completedPomodoros,
+      taskAct,
+      taskEst,
+      remainingStudyPomodoros,
     });
   },
 

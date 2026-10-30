@@ -303,20 +303,42 @@ io.on('connection', (socket: Socket) => {
     io.to(code).emit('room_state', room);
   });
 
-  socket.on('update_status', ({ roomCode, status, currentTaskTitle, completedPomodoros }: { roomCode: string; status: 'focusing' | 'shortBreak' | 'longBreak' | 'idle'; currentTaskTitle?: string; completedPomodoros?: number }) => {
-    const code = roomCode.toUpperCase();
-    const room = rooms.get(code);
-    if (!room || !currentUserId) return;
+  socket.on(
+    'update_status',
+    ({
+      roomCode,
+      status,
+      currentTaskTitle,
+      completedPomodoros,
+      taskAct,
+      taskEst,
+      remainingStudyPomodoros,
+    }: {
+      roomCode: string;
+      status: 'focusing' | 'shortBreak' | 'longBreak' | 'idle';
+      currentTaskTitle?: string;
+      completedPomodoros?: number;
+      taskAct?: number;
+      taskEst?: number;
+      remainingStudyPomodoros?: number;
+    }) => {
+      const code = roomCode.toUpperCase();
+      const room = rooms.get(code);
+      if (!room || !currentUserId) return;
 
-    const p = room.participants.find((p) => p.id === currentUserId);
-    if (p) {
-      p.status = status;
-      if (currentTaskTitle !== undefined) p.currentTaskTitle = currentTaskTitle;
-      if (completedPomodoros !== undefined) p.completedPomodoros = completedPomodoros;
+      const p = room.participants.find((p) => p.id === currentUserId);
+      if (p) {
+        p.status = status;
+        if (currentTaskTitle !== undefined) p.currentTaskTitle = currentTaskTitle;
+        if (completedPomodoros !== undefined) p.completedPomodoros = completedPomodoros;
+        if (taskAct !== undefined) p.taskAct = taskAct;
+        if (taskEst !== undefined) p.taskEst = taskEst;
+        if (remainingStudyPomodoros !== undefined) p.remainingStudyPomodoros = remainingStudyPomodoros;
 
-      io.to(code).emit('room_participants_updated', { participants: room.participants });
+        io.to(code).emit('room_participants_updated', { participants: room.participants });
+      }
     }
-  });
+  );
 
   socket.on('toggle_sync_mode', ({ roomCode, syncMode }: { roomCode: string; syncMode: RoomSyncMode }) => {
     const code = roomCode.toUpperCase();

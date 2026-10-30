@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import confetti from 'canvas-confetti';
+import { Users } from 'lucide-react';
 import { TimerMode, Task, UserSettings, UserStats, RoomState, RoomSyncMode, RoomReaction, ChatMessage } from './types';
 import {
   getOrCreateUser,
@@ -131,7 +132,7 @@ export function App() {
     };
   }, [isSyncedFollower, user]);
 
-  // Update online participant status when user, activeTask, or pomodoros change
+  // Update online participant status when user, activeTask, tasks, or pomodoros change
   useEffect(() => {
     if (room) {
       const status = isRunning
@@ -142,9 +143,31 @@ export function App() {
           : 'longBreak'
         : 'idle';
 
-      socketService.updateStatus(room.code, status, activeTask?.title, stats.pomodorosCompleted);
+      const totalRemainingStudyPomodoros = tasks.reduce(
+        (acc, t) => acc + (t.completed ? 0 : Math.max(0, t.est - t.act)),
+        0
+      );
+
+      socketService.updateStatus(
+        room.code,
+        status,
+        activeTask?.title,
+        stats.pomodorosCompleted,
+        activeTask?.act,
+        activeTask?.est,
+        totalRemainingStudyPomodoros
+      );
     }
-  }, [room?.code, isRunning, mode, activeTask?.title, stats.pomodorosCompleted]);
+  }, [
+    room?.code,
+    isRunning,
+    mode,
+    activeTask?.title,
+    activeTask?.act,
+    activeTask?.est,
+    tasks,
+    stats.pomodorosCompleted,
+  ]);
 
   // Document title and browser tab synchronization
   useEffect(() => {
@@ -553,6 +576,85 @@ export function App() {
           onResetTimer={handleResetTimer}
           onToggleActiveTaskComplete={() => activeTaskId && handleToggleComplete(activeTaskId)}
         />
+
+        {/* Live Study Accountability Strip when in room */}
+        {room && (
+          <div className="w-full max-w-2xl px-2 my-4">
+            <div className="p-3.5 rounded-2xl bg-black/15 backdrop-blur-md border border-white/10 shadow-md">
+              <div className="flex items-center justify-between mb-2.5">
+                <div className="flex items-center space-x-2">
+                  <Users className="w-4 h-4 text-emerald-300" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-white/90">
+                    Room {room.code} • Peer Accountability
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/20 text-white font-bold">
+                    {room.participants.length} studying
+                  </span>
+                </div>
+                <button
+                  onClick={() => setIsRoomsOpen(true)}
+                  className="text-xs font-bold text-white/90 hover:text-white underline hover:no-underline"
+                >
+                  View Details & Chat →
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {room.participants.map((p) => {
+                  const isFocusing = p.status === 'focusing';
+                  const isBreak = p.status === 'shortBreak' || p.status === 'longBreak';
+                  return (
+                    <div
+                      key={p.id}
+                      className="flex items-center justify-between p-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 transition-all text-xs"
+                    >
+                      <div className="flex items-center space-x-2 min-w-0">
+                        <span className="text-lg relative shrink-0">
+                          {p.avatar}
+                          <span
+                            className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-white ${
+                              isFocusing ? 'bg-emerald-400 animate-pulse' : isBreak ? 'bg-blue-400' : 'bg-slate-400'
+                            }`}
+                          />
+                        </span>
+                        <div className="min-w-0 truncate">
+                          <div className="flex items-center space-x-1.5 font-bold text-white truncate">
+                            <span className="truncate">{p.name}</span>
+                            {p.id === user.id && (
+                              <span className="text-[10px] text-white/60 font-normal shrink-0">(You)</span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-white/80 truncate">
+                            {p.currentTaskTitle ? (
+                              <span className="truncate">🎯 {p.currentTaskTitle}</span>
+                            ) : (
+                              <span className="italic text-white/50">Focusing</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col items-end shrink-0 pl-2">
+                        <span className="font-bold text-white bg-white/20 px-2 py-0.5 rounded-md text-[11px]">
+                          {p.taskEst
+                            ? `${p.taskAct ?? 0}/${p.taskEst} 🍅`
+                            : `🍅 ${p.completedPomodoros || 0}`}
+                        </span>
+                        {typeof p.remainingStudyPomodoros === 'number' && (
+                          <span className="text-[10px] text-white/70 mt-0.5">
+                            {p.remainingStudyPomodoros === 0
+                              ? 'Done! ✨'
+                              : `${p.remainingStudyPomodoros} left`}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Task List */}
         <TaskList

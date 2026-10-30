@@ -94,20 +94,34 @@ ioServer.on('connection', (socket) => {
     ioServer.to(code).emit('room_state', room);
   });
 
-  socket.on('update_status', ({ roomCode, status, currentTaskTitle, completedPomodoros }) => {
-    const code = roomCode.toUpperCase();
-    const room = rooms.get(code);
-    if (!room || !currentUserId) return;
+  socket.on(
+    'update_status',
+    ({
+      roomCode,
+      status,
+      currentTaskTitle,
+      completedPomodoros,
+      taskAct,
+      taskEst,
+      remainingStudyPomodoros,
+    }) => {
+      const code = roomCode.toUpperCase();
+      const room = rooms.get(code);
+      if (!room || !currentUserId) return;
 
-    const p = room.participants.find((p) => p.id === currentUserId);
-    if (p) {
-      p.status = status;
-      if (currentTaskTitle !== undefined) p.currentTaskTitle = currentTaskTitle;
-      if (completedPomodoros !== undefined) p.completedPomodoros = completedPomodoros;
+      const p = room.participants.find((p) => p.id === currentUserId);
+      if (p) {
+        p.status = status;
+        if (currentTaskTitle !== undefined) p.currentTaskTitle = currentTaskTitle;
+        if (completedPomodoros !== undefined) p.completedPomodoros = completedPomodoros;
+        if (taskAct !== undefined) p.taskAct = taskAct;
+        if (taskEst !== undefined) p.taskEst = taskEst;
+        if (remainingStudyPomodoros !== undefined) p.remainingStudyPomodoros = remainingStudyPomodoros;
 
-      ioServer.to(code).emit('room_participants_updated', { participants: room.participants });
+        ioServer.to(code).emit('room_participants_updated', { participants: room.participants });
+      }
     }
-  });
+  );
 
   socket.on('send_chat', ({ roomCode, text }) => {
     const code = roomCode.toUpperCase();
@@ -276,6 +290,9 @@ async function run() {
     status: 'focusing',
     currentTaskTitle: 'Deep Work Session',
     completedPomodoros: 3,
+    taskAct: 1,
+    taskEst: 4,
+    remainingStudyPomodoros: 5,
   });
 
   const statusUpdate = await statusUpdatePromise;
@@ -284,7 +301,10 @@ async function run() {
   assert.strictEqual(bobInList.status, 'focusing');
   assert.strictEqual(bobInList.currentTaskTitle, 'Deep Work Session');
   assert.strictEqual(bobInList.completedPomodoros, 3);
-  console.log('✓ Step 6: Bob status update broadcasted to room.');
+  assert.strictEqual(bobInList.taskAct, 1);
+  assert.strictEqual(bobInList.taskEst, 4);
+  assert.strictEqual(bobInList.remainingStudyPomodoros, 5);
+  console.log('✓ Step 6: Bob status update with task progress and remaining pomodoros broadcasted.');
 
   // Step 7: Host Disconnection and automatic promotion of next participant
   const hostTransferPromise = new Promise<RoomState>((resolve) => {
