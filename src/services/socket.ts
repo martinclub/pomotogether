@@ -5,6 +5,10 @@ let socket: Socket | null = null;
 
 // Determine socket URL based on environment
 function getSocketUrl(): string {
+  // Support explicit VITE_SOCKET_URL if frontend is hosted separately (e.g. Vercel)
+  const envUrl = (import.meta as any).env?.VITE_SOCKET_URL;
+  if (envUrl) return envUrl;
+
   if (typeof window === 'undefined') return 'http://localhost:3001';
   // If running in development (localhost or 127.0.0.1 on Vite dev port), connect to port 3001
   if ((window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && window.location.port !== '3001') {
