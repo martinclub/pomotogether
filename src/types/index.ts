@@ -97,3 +97,41 @@ export interface RoomState {
   messages: ChatMessage[];
 }
 
+export interface DiscordAuthUser {
+  id: string;
+  discordId: string;
+  username: string;
+  avatar: string | null;
+  globalName: string | null;
+  level: number;
+  xp: number;
+  currentStreak: number;
+  highestStreak: number;
+  lastActiveDate: string | null;
+  createdAt: string;
+}
+
+export interface LeaderboardUser {
+  rank: number;
+  id: string;
+  discordId: string;
+  username: string;
+  globalName: string | null;
+  avatar: string | null;
+  level: number;
+  xp: number;
+  currentStreak: number;
+  highestStreak: number;
+  totalMinutes: number;
+  sessionsCount: number;
+}
+
+export type LeaderboardTimeframe = 'weekly' | 'monthly' | 'yearly';
+
+export interface AmbientTrack {
+  id: 'rain' | 'coffee' | 'fireplace' | 'lofi';
+  name: string;
+  icon: string;
+  volume: number; // 0 to 1
+  isPlaying: boolean;
+}

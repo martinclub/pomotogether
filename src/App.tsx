@@ -25,6 +25,9 @@ import { UserProfileModal } from './components/UserProfileModal';
 import { FloatingReactions } from './components/FloatingReactions';
 import { RoomMembersPanel } from './components/RoomMembersPanel';
 import { RoomChatPanel } from './components/RoomChatPanel';
+import { DiscordAuthUser } from './types';
+import { DiscordLoginGate } from './components/DiscordLoginGate';
+import { LeaderboardModal } from './components/LeaderboardModal';
 
 export function App() {
   // State
@@ -50,6 +53,13 @@ export function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
+
+  // Discord OAuth Authentication & Database State
+  const [authToken, setAuthToken] = useState<string | null>(() => localStorage.getItem('pomotogether_token'));
+  const [discordUser, setDiscordUser] = useState<DiscordAuthUser | null>(null);
+  const [heatmapData, setHeatmapData] = useState<Record<string, { minutes: number; count: number }>>({});
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
 
   const isHost = room ? room.hostId === user.id : true;
   const isSyncedFollower = room?.syncMode === 'synced' && !isHost;
@@ -77,6 +87,59 @@ export function App() {
   useEffect(() => {
     saveUser(user);
   }, [user]);
+
+  const fetchCurrentUser = useCallback(async (token: string) => {
+    try {
+      const res = await fetch('/api/auth/me', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDiscordUser(data.user);
+        setHeatmapData(data.heatmap || {});
+        setUser((prev) => ({
+          ...prev,
+          name: data.user.globalName || data.user.username,
+          avatar: data.user.avatar || prev.avatar,
+        }));
+      } else {
+        localStorage.removeItem('pomotogether_token');
+        setAuthToken(null);
+        setDiscordUser(null);
+      }
+    } catch (err) {
+      console.error('Failed to verify user token:', err);
+    } finally {
+      setIsAuthLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tokenFromUrl = params.get('token');
+    if (tokenFromUrl) {
+      localStorage.setItem('pomotogether_token', tokenFromUrl);
+      setAuthToken(tokenFromUrl);
+      window.history.replaceState({}, document.title, window.location.pathname);
+      fetchCurrentUser(tokenFromUrl);
+    } else {
+      const savedToken = localStorage.getItem('pomotogether_token');
+      if (savedToken) {
+        fetchCurrentUser(savedToken);
+      } else {
+        setIsAuthLoading(false);
+      }
+    }
+  }, [fetchCurrentUser]);
+
+  const handleLogout = () => {
+    localStorage.removeItem('pomotogether_token');
+    setAuthToken(null);
+    setDiscordUser(null);
+    setIsProfileOpen(false);
+  };
 
   // Connect socket and handle URL room parameter on mount
   useEffect(() => {
@@ -231,6 +294,30 @@ export function App() {
         const minutesAdded = Math.max(1, Math.round(duration / 60));
         const updatedStats = recordCompletedPomodoro(minutesAdded);
         setStats(updatedStats);
+
+        // Record to Prisma Database for Discord user XP, Streaks and Leaderboard
+        if (authToken) {
+          fetch('/api/study-session', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${authToken}`,
+            },
+            body: JSON.stringify({
+              minutes: minutesAdded,
+              mode: 'pomodoro',
+              taskTitle: activeTask?.title || null,
+            }),
+          })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => {
+              if (data?.user) {
+                setDiscordUser(data.user);
+              }
+              if (authToken) fetchCurrentUser(authToken);
+            })
+            .catch((err) => console.error('Failed to sync study session to database:', err));
+        }
 
         // Update active task count
         if (activeTaskId) {
@@ -602,11 +689,13 @@ export function App() {
       {/* Top Navigation */}
       <Navbar
         user={user}
+        discordUser={discordUser}
         room={room}
         isPureFocus={isPureFocus}
         onOpenReport={() => setIsReportOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenRooms={() => setIsRoomsOpen(true)}
+        onOpenLeaderboard={() => setIsLeaderboardOpen(true)}
         onOpenProfile={() => setIsProfileOpen(true)}
       />
 
@@ -816,8 +905,28 @@ export function App() {
         isOpen={isProfileOpen}
         onClose={() => setIsProfileOpen(false)}
         user={user}
+        discordUser={discordUser}
+        heatmapData={heatmapData}
         onSaveUser={setUser}
+        onLogout={handleLogout}
       />
+
+      <LeaderboardModal
+        isOpen={isLeaderboardOpen}
+        onClose={() => setIsLeaderboardOpen(false)}
+        currentUser={discordUser}
+      />
+
+      {/* Mandatory Discord Login Gate */}
+      {(!authToken || !discordUser) && !isAuthLoading && (
+        <DiscordLoginGate
+          onLoginSuccess={(token, u) => {
+            setAuthToken(token);
+            setDiscordUser(u);
+            fetchCurrentUser(token);
+          }}
+        />
+      )}
     </div>
   );
 }

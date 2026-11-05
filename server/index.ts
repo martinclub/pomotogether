@@ -1,13 +1,21 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import http from 'http';
 import { Server, Socket } from 'socket.io';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import jwt from 'jsonwebtoken';
 import { RoomState, Participant, TimerMode, RoomSyncMode, ChatMessage, RoomReaction, RoomTimerSettings } from '../src/types';
+import { prisma, upsertDiscordUser, recordUserStudySession, getLeaderboard, getUserHeatmap, getEffectiveStreak } from './db.js';
+import { initDiscordBot } from './bot.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const JWT_SECRET = process.env.JWT_SECRET || 'pomotogether_secret_key_jwt';
 
 const app = express();
 app.use(cors());
@@ -74,7 +82,7 @@ export function createInitialRoom(
 }
 
 // Server-side ticker to maintain precision for synced timer rooms
-setInterval(() => {
+const roomTicker = setInterval(() => {
   const now = Date.now();
   rooms.forEach((room, roomCode) => {
     if (room.syncMode === 'synced' && room.timer.isRunning) {
@@ -139,6 +147,7 @@ setInterval(() => {
     }
   });
 }, 1000);
+roomTicker.unref();
 
 // API routes
 app.get('/api/health', (req, res) => {
@@ -162,6 +171,238 @@ app.get('/api/rooms/:code', (req, res) => {
     syncMode: room.syncMode,
     timer: room.timer,
   });
+});
+
+// Auth token middleware
+export function authenticateToken(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  if (!token) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  jwt.verify(token, JWT_SECRET, (err: any, decoded: any) => {
+    if (err) {
+      return res.status(403).json({ error: 'Invalid or expired token' });
+    }
+    (req as any).user = decoded;
+    next();
+  });
+}
+
+// 1. Discord OAuth2 Authorize Redirect
+app.get('/api/auth/discord', (req, res) => {
+  const clientId = process.env.DISCORD_CLIENT_ID;
+  if (!clientId) {
+    return res.status(500).json({ error: 'DISCORD_CLIENT_ID not configured' });
+  }
+  const redirectUri = process.env.DISCORD_REDIRECT_URI || `http://localhost:${PORT}/api/auth/discord/callback`;
+  const returnTo = (req.query.return_to as string) || req.headers.referer || '';
+  const state = returnTo ? encodeURIComponent(returnTo) : '';
+  const stateParam = state ? `&state=${state}` : '';
+  const url = `https://discord.com/api/oauth2/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(
+    redirectUri
+  )}&response_type=code&scope=identify%20email${stateParam}`;
+  res.redirect(url);
+});
+
+// 2. Discord OAuth2 Callback
+app.get('/api/auth/discord/callback', async (req, res) => {
+  const code = req.query.code as string;
+  if (!code) {
+    return res.status(400).send('Missing Discord authorization code');
+  }
+
+  try {
+    const clientId = process.env.DISCORD_CLIENT_ID!;
+    const clientSecret = process.env.DISCORD_CLIENT_SECRET!;
+    const redirectUri = process.env.DISCORD_REDIRECT_URI || `http://localhost:${PORT}/api/auth/discord/callback`;
+
+    const tokenParams = new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: redirectUri,
+    });
+
+    const tokenRes = await fetch('https://discord.com/api/oauth2/token', {
+      method: 'POST',
+      body: tokenParams,
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    });
+
+    if (!tokenRes.ok) {
+      const errText = await tokenRes.text();
+      console.error('[Discord OAuth] Exchange error:', errText);
+      return res.status(400).send(`Discord authentication failed: ${errText}`);
+    }
+
+    const tokenData = await tokenRes.json();
+    const userRes = await fetch('https://discord.com/api/users/@me', {
+      headers: {
+        Authorization: `Bearer ${tokenData.access_token}`,
+      },
+    });
+
+    if (!userRes.ok) {
+      return res.status(400).send('Failed to fetch Discord user information');
+    }
+
+    const discordUser = await userRes.json();
+    const avatarUrl = discordUser.avatar
+      ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png`
+      : `https://cdn.discordapp.com/embed/avatars/${(BigInt(discordUser.id || '0') >> 22n) % 6n}.png`;
+
+    const user = await upsertDiscordUser({
+      discordId: discordUser.id,
+      username: discordUser.username,
+      avatar: avatarUrl,
+      globalName: discordUser.global_name,
+    });
+
+    const token = jwt.sign(
+      {
+        id: user.id,
+        discordId: user.discordId,
+        username: user.username,
+      },
+      JWT_SECRET,
+      { expiresIn: '30d' }
+    );
+
+    // Determine target origin to return to
+    const rawState = req.query.state as string;
+    let targetBase = '';
+    if (rawState) {
+      try {
+        const decoded = decodeURIComponent(rawState);
+        const urlObj = new URL(decoded);
+        targetBase = `${urlObj.protocol}//${urlObj.host}`;
+      } catch {}
+    }
+
+    if (!targetBase) {
+      const isDev = process.env.NODE_ENV === 'development';
+      targetBase = isDev ? 'http://localhost:5173' : '';
+    }
+    res.redirect(`${targetBase}/?token=${token}`);
+  } catch (error: any) {
+    console.error('[Discord OAuth] Internal error:', error);
+    res.status(500).send('Internal server error during Discord authentication');
+  }
+});
+
+// 3. Mock login for tests/local development without active Discord redirect
+app.post('/api/auth/mock-login', async (req, res) => {
+  const { discordId, username, avatar, globalName } = req.body;
+  if (!discordId || !username) {
+    return res.status(400).json({ error: 'discordId and username are required' });
+  }
+
+  const user = await upsertDiscordUser({
+    discordId,
+    username,
+    avatar: avatar || '🍅',
+    globalName: globalName || username,
+  });
+
+  const token = jwt.sign(
+    {
+      id: user.id,
+      discordId: user.discordId,
+      username: user.username,
+    },
+    JWT_SECRET,
+    { expiresIn: '30d' }
+  );
+
+  res.json({ token, user });
+});
+
+// 4. Current authenticated user profile & heatmap
+app.get('/api/auth/me', authenticateToken, async (req, res) => {
+  try {
+    const payload = (req as any).user;
+    const user = await prisma.user.findUnique({
+      where: { id: payload.id },
+      include: {
+        studySessions: {
+          orderBy: { createdAt: 'desc' },
+          take: 20,
+        },
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found in database' });
+    }
+
+    const effectiveStreak = getEffectiveStreak(user.currentStreak, user.lastActiveDate);
+    const userWithEffectiveStreak = {
+      ...user,
+      currentStreak: effectiveStreak,
+    };
+
+    const heatmap = await getUserHeatmap(user.id);
+    res.json({ user: userWithEffectiveStreak, heatmap });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 5. Study session recording endpoint
+app.post('/api/study-session', authenticateToken, async (req, res) => {
+  try {
+    const payload = (req as any).user;
+    const { minutes, mode, taskTitle } = req.body;
+    if (!minutes || typeof minutes !== 'number') {
+      return res.status(400).json({ error: 'minutes is required and must be a number' });
+    }
+
+    const result = await recordUserStudySession({
+      userId: payload.id,
+      minutes,
+      mode: mode || 'pomodoro',
+      taskTitle: taskTitle || null,
+    });
+
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 6. Leaderboard endpoint
+app.get('/api/leaderboard', async (req, res) => {
+  try {
+    const rawParam = ((req.query.timeframe as string) || '').toLowerCase().trim();
+    let timeframe: 'weekly' | 'monthly' | 'yearly' = 'weekly';
+    if (rawParam === 'monthly') {
+      timeframe = 'monthly';
+    } else if (rawParam === 'yearly' || rawParam === 'current year' || rawParam === 'current_year' || rawParam === 'annual') {
+      timeframe = 'yearly';
+    } else {
+      timeframe = 'weekly';
+    }
+
+    const leaderboard = await getLeaderboard(timeframe);
+    res.json({ timeframe, leaderboard });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 7. Heatmap endpoint for specific user
+app.get('/api/users/:userId/heatmap', async (req, res) => {
+  try {
+    const heatmap = await getUserHeatmap(req.params.userId);
+    res.json({ heatmap });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Fallback for SPA routing if dist exists
@@ -447,6 +688,7 @@ const isTestRun = process.env.NODE_ENV === 'test' || process.argv.some((arg) => 
 if (!isTestRun) {
   server.listen(PORT, () => {
     console.log(`[Pomotogether] Real-time Server running on port ${PORT}`);
+    initDiscordBot();
   });
 }
 
